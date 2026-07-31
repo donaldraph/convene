@@ -72,5 +72,31 @@ class TestFreeSlots(unittest.TestCase):
         self.assertEqual(len(rec["ranked"]), 1)
 
 
+class TestShortlist(unittest.TestCase):
+    def test_caps_and_spreads(self):
+        # 3 days of dense half-hourly slots -> at most per_day*days, <= max_total.
+        slots = []
+        for d in range(1, 4):
+            for h in range(8, 20):
+                slots.append({"start": dt(2026, 8, d, h).isoformat(),
+                              "end": dt(2026, 8, d, h + 1).isoformat()})
+        picked = model.shortlist(slots, per_day=3, max_total=18)
+        self.assertLessEqual(len(picked), 9)
+        days = {p["start"][:10] for p in picked}
+        self.assertEqual(len(days), 3)  # every day represented
+
+    def test_total_cap_wins(self):
+        slots = []
+        for d in range(1, 11):
+            for h in range(8, 20):
+                slots.append({"start": dt(2026, 8, d, h).isoformat(),
+                              "end": dt(2026, 8, d, h + 1).isoformat()})
+        self.assertLessEqual(len(model.shortlist(slots, per_day=3, max_total=18)), 18)
+
+    def test_thin_day_kept_whole(self):
+        slots = [{"start": dt(2026, 8, 1, 9).isoformat(), "end": dt(2026, 8, 1, 10).isoformat()}]
+        self.assertEqual(len(model.shortlist(slots, per_day=3)), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

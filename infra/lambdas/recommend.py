@@ -46,7 +46,9 @@ def handler(event, context):
 
     now = datetime.datetime.now(datetime.timezone.utc)
     window_end = now + datetime.timedelta(days=within_days)
-    slots = reco_model.free_slots(duration_min, academic, community, now, window_end)
+    all_free = reco_model.free_slots(duration_min, academic, community, now, window_end)
+    # Rank a spread the model can handle fast, not all N half-hourly slots.
+    slots = reco_model.shortlist(all_free)
 
     try:
         rec = reco_model.recommend(
@@ -61,12 +63,14 @@ def handler(event, context):
         "title": title, "duration_min": duration_min, "within_days": within_days,
         "source": rec["source"], "reasoning": rec["reasoning"],
         "ranked": rec["ranked"], "candidate_count": len(slots),
+        "total_free": len(all_free),
     })
 
     print("[recommend] " + json.dumps({
-        "title": title, "candidates": len(slots), "source": rec["source"]}))
+        "title": title, "shortlisted": len(slots), "total_free": len(all_free),
+        "source": rec["source"]}))
     return resp(200, {
         "ok": True, "requested_at": requested_at, "title": title,
         "duration_min": duration_min, "within_days": within_days,
-        "candidate_count": len(slots), **rec,
+        "candidate_count": len(slots), "total_free": len(all_free), **rec,
     })

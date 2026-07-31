@@ -21,7 +21,6 @@ never lies about being AI when it is not.
 import datetime
 import json
 import os
-import time
 import urllib.error
 import urllib.request
 from typing import List, Optional, TypedDict
@@ -145,6 +144,30 @@ def free_slots(
     return slots
 
 
+def shortlist(slots: List[Slot], per_day: int = 3, max_total: int = 18) -> List[Slot]:
+    """Down-sample free slots to a spread the model can rank fast.
+
+    A 10-day window yields hundreds of half-hourly free slots; asking the model
+    to rank all of them is slow and pointless (they cluster). Instead take a few
+    evenly-spaced slots per day (early / mid / late) across the window, capped.
+    The user gets varied real options, not 200 near-duplicates.
+    """
+    by_day = {}
+    for s in slots:
+        day = s["start"][:10]
+        by_day.setdefault(day, []).append(s)
+
+    picked: List[Slot] = []
+    for day in sorted(by_day):
+        day_slots = by_day[day]
+        if len(day_slots) <= per_day:
+            picked += day_slots
+        else:
+            step = (len(day_slots) - 1) / (per_day - 1) if per_day > 1 else 0
+            picked += [day_slots[round(i * step)] for i in range(per_day)]
+    return picked[:max_total]
+
+
 def _api_key() -> Optional[str]:
     if os.environ.get("GEMINI_API_KEY"):
         return os.environ["GEMINI_API_KEY"]
@@ -153,6 +176,14 @@ def _api_key() -> Optional[str]:
         return get_secret(GEMINI_SECRET_NAME).get("api_key")
     except Exception:  # noqa: BLE001 — no secret / no access -> caller falls back
         return None
+
+
+# API Gateway kills any request at 29s, so the whole model budget must fit well
+# under that. We give each model ONE tight attempt and let the model fallback
+# chain (flash-latest -> flash-lite -> deterministic) provide the resilience,
+# rather than slow same-model retries. A 503/429 returns fast, so falling
+# straight through to the next model is quicker than backing off in place.
+_CALL_TIMEOUT_S = int(os.environ.get("GEMINI_TIMEOUT_S", "12"))
 
 
 def _call_gemini(prompt: str, key: str, model_id: str) -> dict:
@@ -165,27 +196,11 @@ def _call_gemini(prompt: str, key: str, model_id: str) -> dict:
             "temperature": 0.4,
         },
     }).encode("utf-8")
-    last_err = None
-    for attempt in range(3):
-        req = urllib.request.Request(
-            url, data=body, method="POST", headers={"Content-Type": "application/json"})
-        try:
-            with urllib.request.urlopen(req, timeout=45) as r:
-                payload = json.load(r)
-            return json.loads(payload["candidates"][0]["content"]["parts"][0]["text"])
-        except urllib.error.HTTPError as exc:
-            last_err = exc
-            if exc.code in (429, 503) and attempt < 2:
-                time.sleep(2 * (attempt + 1))
-                continue
-            raise
-        except (urllib.error.URLError, TimeoutError) as exc:
-            last_err = exc
-            if attempt < 2:
-                time.sleep(2 * (attempt + 1))
-                continue
-            raise
-    raise last_err  # pragma: no cover
+    req = urllib.request.Request(
+        url, data=body, method="POST", headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=_CALL_TIMEOUT_S) as r:
+        payload = json.load(r)
+    return json.loads(payload["candidates"][0]["content"]["parts"][0]["text"])
 
 
 def _fallback(slots: List[Slot], source: str) -> Recommendation:
