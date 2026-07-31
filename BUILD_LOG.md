@@ -150,3 +150,56 @@ just in unit tests. Conflict detection — the first half of the spine — is do
 and working end to end.
 
 17 unit tests total (12 conflict engine + 5 classifier), all green.
+
+## Phase 4: Gemini best-time recommendation (2026-07-31)
+
+The load-bearing AI, second half of the spine. Division of labour kept honest:
+deterministic code computes which candidate slots are genuinely conflict-free
+(model.free_slots), and the MODEL ranks those free slots by judgment code
+cannot fake (protecting revision time before a test, buffers after class,
+sociable hours, avoiding punishing gaps). We never ask the model whether a slot
+is free; only which free slot is best, and why. POST /recommend (key-gated,
+spends quota) + GET /recommendations (public). Every recommendation stored under
+RECO.
+
+Three real problems, each fixed:
+
+**Symptom:** local smoke test of the model returned the honest deterministic
+fallback, not AI. **Root cause:** gemini-3.5-flash (the phase-2 default) now
+503s hard under load for this key. **Fix:** tested five models 3x each WITH the
+real response schema. Two held up: gemini-flash-latest (3/3, and clearly the
+sharpest reasoning) and gemini-3.5-flash-lite (3/3, rock solid);
+gemini-2.5-flash-lite 404s, gemini-2.0-flash 429s. Made the primary the sharp
+one with an automatic fallback to the solid one, then a labelled deterministic
+fallback. **Reasoning:** for a pass/fail challenge the AI feature must actually
+produce AI output; a fallback CHAIN across models buys both quality and
+reliability without pretending.
+
+**Symptom:** first live POST /recommend returned "Endpoint request timed out".
+**Root cause:** API Gateway REST APIs kill any request at 29s; the model budget
+(45s urlopen + retries + fallback) exceeded it. **Fix:** one tight attempt per
+model (12s) and let the model chain be the resilience, not slow same-model
+retries — a 503/429 returns fast, so falling straight to the next model is
+quicker than backing off in place. **Reasoning:** stay synchronous (simple)
+while fitting the hard cap.
+
+**Symptom:** after that, both models timed out at 12s. **Root cause:** a 10-day
+window yields 223 half-hourly free slots, and asking the model to rank all 223
+made a huge prompt and an enormous generation. **Fix:** model.shortlist
+down-samples to an evenly-spread ~18 (a few per day across the window) before
+the model call; the response reports both total_free and the shortlisted count.
+**Reasoning:** ranking 200 near-duplicate slots is pointless and slow; a spread
+of real options across days is what the user wants and the model can rank fast.
+
+**Live proof on real data (2026-07-31):** POST /recommend for a 90-min "Core
+team planning meeting" over 10 days: 223 free slots found, 18 shortlisted,
+gemini-3.5-flash-lite ranked them (primary flash-latest timed out, chain caught
+it) and recommended a Jul 31 late-afternoon slot, explicitly reasoning to AVOID
+"the heavy congestion of midday academic and community events on August 1" —
+i.e. it steered around exactly the day the conflict engine flagged. Genuine
+judgment over both calendars, stored and re-readable via GET /recommendations.
+The spine (conflict detection + best-time recommendation) is DONE and working
+end to end on live data.
+
+27 unit tests total (12 conflict + 5 classifier + 10 free-slot/shortlist/model),
+all green.
