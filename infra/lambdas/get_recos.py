@@ -1,4 +1,4 @@
-"""GET /recommendations — the most recent best-time recommendations for the
+"""GET /recommendations - the most recent best-time recommendations for the
 dashboard. Public read. ?limit=N (default 5, newest first)."""
 from boto3.dynamodb.conditions import Key
 

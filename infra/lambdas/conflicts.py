@@ -1,13 +1,13 @@
 """Deterministic conflict detection between the academic and community calendars.
 
 Pure functions, no AWS, no network: unit-testable on any box. This is plain
-interval math on purpose — the AI's job in convene is recommending better
+interval math on purpose - the AI's job in convene is recommending better
 slots, not deciding whether two meetings overlap.
 
 Two conflict types:
-  hard     — two TIMED events whose intervals overlap (startA < endB and
+  hard     - two TIMED events whose intervals overlap (startA < endB and
              startB < endA). The unambiguous collision.
-  same_day — an ALL-DAY event on one calendar sharing a date with an event on
+  same_day - an ALL-DAY event on one calendar sharing a date with an event on
              the other. Flagged separately because an all-day "Exam week" vs a
              2h workshop is a judgment call, not a certain collision; the UI
              presents these as warnings, never as hard conflicts.

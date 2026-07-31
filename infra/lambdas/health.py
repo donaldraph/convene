@@ -1,4 +1,4 @@
-"""GET /health — proves the API GW -> Lambda -> table wiring end to end."""
+"""GET /health - proves the API GW -> Lambda -> table wiring end to end."""
 import os
 
 from common import TABLE, local_now, resp

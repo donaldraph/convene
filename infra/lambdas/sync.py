@@ -1,4 +1,4 @@
-"""POST /sync — pull the calendar(s), reconcile the cache, detect conflicts.
+"""POST /sync - pull the calendar(s), reconcile the cache, detect conflicts.
 
 The one write-path for calendar state. Two source modes:
 
@@ -160,7 +160,7 @@ def run_sync():
 def handler(event, context):
     try:
         result, missing = run_sync()
-    except Exception as exc:  # noqa: BLE001 — surface the real failure class
+    except Exception as exc:  # noqa: BLE001 - surface the real failure class
         print(f"[sync] failed: {type(exc).__name__}: {exc}")
         return resp(502, {"ok": False, "error": type(exc).__name__})
     if missing:

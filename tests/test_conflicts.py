@@ -1,5 +1,5 @@
 """Unit tests for the pure conflict engine. Run: python3 -m unittest discover tests
-No AWS, no network — these prove the interval math before anything touches a
+No AWS, no network - these prove the interval math before anything touches a
 real calendar."""
 import sys
 import unittest

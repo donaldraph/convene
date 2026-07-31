@@ -130,6 +130,35 @@
     return anyPending;
   }
 
+  function renderTasks(data) {
+    var box = document.getElementById("tasks");
+    box.innerHTML = "";
+    var list = (data && data.tasks) || [];
+    if (!list.length) {
+      box.appendChild(el("p", "empty", "No team tasks yet."));
+      return;
+    }
+    list.forEach(function (t) {
+      var card = el("div", "card task");
+      var row = el("div", "task-row");
+      var badgeCls = t.status === "done" ? "model" : t.status === "doing" ? "same_day" : "pending";
+      row.appendChild(el("span", "badge " + badgeCls, t.status));
+      row.appendChild(el("span", "task-title" + (t.status === "done" ? " done" : ""), t.title));
+      card.appendChild(row);
+      var meta = el("div", "task-meta");
+      meta.appendChild(el("span", null, "→ " + (t.assignee || "unassigned")));
+      if (t.due) meta.appendChild(el("span", null, "due " + t.due));
+      card.appendChild(meta);
+      box.appendChild(card);
+    });
+  }
+
+  function loadTasks() {
+    get("/tasks").then(renderTasks).catch(function () {
+      document.getElementById("tasks").innerHTML = '<p class="empty">Could not reach the API.</p>';
+    });
+  }
+
   function loadConflicts() {
     get("/conflicts").then(function (d) {
       renderConflicts(d);
@@ -157,4 +186,5 @@
   }
   loadConflicts();
   loadRecos();
+  loadTasks();
 })();

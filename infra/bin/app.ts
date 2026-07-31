@@ -17,13 +17,13 @@ const env: cdk.Environment = {
 
 const prefix = `cv-${stage}`;
 
-// Storage layer — the one table every other stack reads and writes.
+// Storage layer - the one table every other stack reads and writes.
 const data = new DataStack(app, `${prefix}-data`, { env, stage });
 
-// Compute + API — calendar sync, conflict detection, recommendations, tasks.
+// Compute + API - calendar sync, conflict detection, recommendations, tasks.
 const api = new ApiStack(app, `${prefix}-api`, { env, stage, table: data.table });
 
-// Static hosting — S3 + CloudFront for the dashboard, fed the API base URL.
+// Static hosting - S3 + CloudFront for the dashboard, fed the API base URL.
 new HostingStack(app, `${prefix}-hosting`, { env, stage, apiUrl: api.api.url });
 
 cdk.Tags.of(app).add('project', 'convene');

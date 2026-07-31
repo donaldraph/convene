@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Convene — two calendars, one community</title>
+<title>Convene - two calendars, one community</title>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -32,12 +32,20 @@
     <div id="recos" class="cards"><p class="loading">Loading recommendations…</p></div>
   </section>
 
+  <section class="panel" id="tasks-panel">
+    <div class="panel-head">
+      <h2>Core team tasks</h2>
+      <span class="sub">Who owns what. The morning Telegram reminder pulls from this board and the conflicts above.</span>
+    </div>
+    <div id="tasks" class="cards"><p class="loading">Loading tasks…</p></div>
+  </section>
+
   <section class="explainer">
     <h3>How Convene works</h3>
     <ol>
-      <li><strong>Reads both calendars</strong> — academic and community — over the next few weeks.</li>
+      <li><strong>Reads both calendars</strong> - academic and community - over the next few weeks.</li>
       <li><strong>Flags collisions</strong> deterministically: two timed events overlapping is a hard conflict; an all-day event sharing a date is a softer same-day warning.</li>
-      <li><strong>Recommends a time</strong> for a new event by having Gemini weigh trade-offs a calendar cannot — buffer before a test, sociable hours, breathing room after class — over slots that code has already proven free.</li>
+      <li><strong>Recommends a time</strong> for a new event by having Gemini weigh trade-offs a calendar cannot - buffer before a test, sociable hours, breathing room after class - over slots that code has already proven free.</li>
     </ol>
     <p class="note">Real data only. Empty sections mean nothing was found, never hidden sample data.</p>
   </section>

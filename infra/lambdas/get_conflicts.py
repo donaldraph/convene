@@ -1,4 +1,4 @@
-"""GET /conflicts — the dashboard read: conflicts + last-sync freshness.
+"""GET /conflicts - the dashboard read: conflicts + last-sync freshness.
 
 ?status=open (default) | all. Public read like study-conscience's brief: the
 data is my own two calendars' collisions, not secrets, and the write path is

@@ -8,7 +8,7 @@ import boto3
 
 try:
     from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover — stdlib on 3.9+
+except ImportError:  # pragma: no cover - stdlib on 3.9+
     ZoneInfo = None
 
 _dynamodb = boto3.resource("dynamodb")
@@ -36,7 +36,7 @@ def app_tz():
     if ZoneInfo is not None:
         try:
             return ZoneInfo(name)
-        except Exception:  # noqa: BLE001 — missing tzdata -> fixed offset
+        except Exception:  # noqa: BLE001 - missing tzdata -> fixed offset
             pass
     offset = int(os.environ.get("APP_UTC_OFFSET_HOURS", "1"))
     return datetime.timezone(datetime.timedelta(hours=offset))

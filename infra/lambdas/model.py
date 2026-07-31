@@ -4,10 +4,10 @@ best conflict-free time slots. This is where the load-bearing AI lives.
 The division of labour is deliberate. Deterministic code (conflicts.py, and
 free_slots below) does what code should: compute which candidate slots are
 actually free of hard conflicts. The MODEL does what code cannot fake: rank
-those free slots by judgment a student actually cares about — protecting study
+those free slots by judgment a student actually cares about - protecting study
 time around tests, avoiding back-to-back cross-campus hops, respecting
 energy (a 7am slot is "free" but bad), keeping community events in sociable
-hours — and explain the pick in plain language.
+hours - and explain the pick in plain language.
 
 So we never ask the model "is this slot free" (code knows that for certain);
 we ask "given these free slots and everything on both calendars, which is best
@@ -79,7 +79,7 @@ academic calendar and a community-events calendar. Speak to them directly as
 The new event: {title}, duration {duration_minutes} minutes.
 
 These candidate slots are ALREADY confirmed free of hard calendar conflicts by
-deterministic code — you do not need to re-check availability, and you must
+deterministic code - you do not need to re-check availability, and you must
 choose only from this list. Times are ISO 8601 in the calendar's timezone
 ({timezone}):
 {slots}
@@ -94,7 +94,7 @@ Community events:
 
 Your job, using judgment plain date-math cannot:
 1. ranked: order the candidate slots best-first. For each, copy its exact start
-   and end from the list and add "why" — a SHORT phrase, at most 12 words, on
+   and end from the list and add "why" - a SHORT phrase, at most 12 words, on
    the trade-off that sets its rank (buffer before a test, avoiding a punishing
    gap, sociable hours, breathing room after a class). Rank ALL provided slots.
 2. reasoning: 2 to 3 sentences addressed to "you", naming your single best slot
@@ -174,14 +174,14 @@ def _api_key() -> Optional[str]:
     try:
         from common import get_secret
         return get_secret(GEMINI_SECRET_NAME).get("api_key")
-    except Exception:  # noqa: BLE001 — no secret / no access -> caller falls back
+    except Exception:  # noqa: BLE001 - no secret / no access -> caller falls back
         return None
 
 
 # API Gateway kills any request at 29s, so the whole model budget must fit well
 # under that. Measured free-tier latency (2026-07-31): flash-latest is steady at
 # ~5-6s, flash-lite swings 1.6-16.7s. So give the primary a generous 16s (absorbs
-# an occasional spike) and the fallback 10s — 26s worst case, under the cap — and
+# an occasional spike) and the fallback 10s - 26s worst case, under the cap - and
 # let the model chain (flash-latest -> flash-lite -> deterministic) be the
 # resilience rather than slow same-model retries.
 _PRIMARY_TIMEOUT_S = int(os.environ.get("GEMINI_TIMEOUT_S", "16"))
@@ -249,7 +249,7 @@ def recommend(title: str, duration_min: int, slots: List[Slot],
         timeout = _PRIMARY_TIMEOUT_S if idx == 0 else _FALLBACK_TIMEOUT_S
         try:
             raw = _call_gemini(prompt, key, model_id, timeout)
-        except Exception as exc:  # noqa: BLE001 — try the next model, then fall back
+        except Exception as exc:  # noqa: BLE001 - try the next model, then fall back
             last_err = exc
             continue
         ranked = [r for r in raw.get("ranked", []) if r.get("start") in valid]

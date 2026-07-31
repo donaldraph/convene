@@ -141,12 +141,12 @@ realistic student setup. The AI's job (best-time recommendation) is unchanged;
 this only affects where the two event sets come from.
 
 **Live proof on real data (2026-07-31):** POST /sync in split mode returned
-mode=split, academic 2 / community 2 events, and detected **2 hard conflicts** —
+mode=split, academic 2 / community 2 events, and detected **2 hard conflicts** -
 the owner's "Academic" event on Aug 1 12:00-13:00 collides with both "outreach"
 and "tour" at the same time. GET /conflicts returns both with stable ids. A
 second sync returned open_new 0 / still_open 2 / cleared 0, proving the stable
 conflict ids and exactly-once open/keep/clear machinery hold on real data, not
-just in unit tests. Conflict detection — the first half of the spine — is done
+just in unit tests. Conflict detection - the first half of the spine - is done
 and working end to end.
 
 17 unit tests total (12 conflict engine + 5 classifier), all green.
@@ -179,7 +179,7 @@ reliability without pretending.
 **Root cause:** API Gateway REST APIs kill any request at 29s; the model budget
 (45s urlopen + retries + fallback) exceeded it. **Fix:** one tight attempt per
 model (12s) and let the model chain be the resilience, not slow same-model
-retries — a 503/429 returns fast, so falling straight to the next model is
+retries - a 503/429 returns fast, so falling straight to the next model is
 quicker than backing off in place. **Reasoning:** stay synchronous (simple)
 while fitting the hard cap.
 
@@ -195,7 +195,7 @@ of real options across days is what the user wants and the model can rank fast.
 team planning meeting" over 10 days: 223 free slots found, 18 shortlisted,
 gemini-3.5-flash-lite ranked them (primary flash-latest timed out, chain caught
 it) and recommended a Jul 31 late-afternoon slot, explicitly reasoning to AVOID
-"the heavy congestion of midday academic and community events on August 1" —
+"the heavy congestion of midday academic and community events on August 1" -
 i.e. it steered around exactly the day the conflict engine flagged. Genuine
 judgment over both calendars, stored and re-readable via GET /recommendations.
 The spine (conflict detection + best-time recommendation) is DONE and working
@@ -207,11 +207,11 @@ all green.
 ### Phase 4 follow-up: async, because free-tier latency vs the 29s cap
 
 **Symptom:** even after tuning models and shortlisting, POST /recommend only
-succeeded ~2-4 times in 6 — the rest returned the honest deterministic fallback
+succeeded ~2-4 times in 6 - the rest returned the honest deterministic fallback
 after both models timed out. Repeated rapid calls made it worse.
 **Root cause:** two compounding facts. (1) API Gateway REST APIs hard-kill any
 request at 29s. (2) Gemini free-tier latency is highly variable and, under my
-own rapid testing, rate-limited into multi-second queueing — from Lambda,
+own rapid testing, rate-limited into multi-second queueing - from Lambda,
 individual calls sometimes exceeded even 20s. A synchronous endpoint capped at
 29s cannot reliably wait that out, no matter how the model budget is split.
 **Fix:** made /recommend asynchronous. The API handler computes free slots +
@@ -250,7 +250,7 @@ Cleaned up test artifacts first: my earlier synchronous-era testing left several
 FALLBACK records (pre-async, no status field) that misrepresented the now-
 reliable feature, so I deleted them and generated a fresh set of three real
 recommendations through the working async path (all three landed real AI after
-a rate-limit cooldown). Not fabrication — real outputs of the real system,
+a rate-limit cooldown). Not fabrication - real outputs of the real system,
 minus the stale failed attempts.
 
 **Live + visually verified (2026-07-31):** https://d2huf9zo4vm99c.cloudfront.net

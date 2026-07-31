@@ -7,7 +7,7 @@ interface DataStackProps extends cdk.StackProps {
 }
 
 /**
- * Storage layer — one DynamoDB table, single-table design keyed by a typed PK.
+ * Storage layer - one DynamoDB table, single-table design keyed by a typed PK.
  *
  *   PK                SK                       what it is
  *   ---------------   ----------------------   ---------------------------------------------

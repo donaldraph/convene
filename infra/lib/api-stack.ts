@@ -4,6 +4,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigw from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 
 // Secret names are fixed here so every phase wires the same ones. Created out of
@@ -86,7 +88,7 @@ export class ApiStack extends cdk.Stack {
     const getConflictsFn = makeFn('GetConflictsFn', 'get_conflicts.handler');
     table.grantReadData(getConflictsFn);
 
-    // Best-time recommendation — the load-bearing AI, run ASYNC. Free-tier
+    // Best-time recommendation - the load-bearing AI, run ASYNC. Free-tier
     // model latency is variable and can exceed API Gateway's hard 29s cap, so
     // the model call cannot run inline. The worker does the Gemini ranking with
     // the full Lambda timeout; the API handler just enqueues and returns a
@@ -109,7 +111,7 @@ export class ApiStack extends cdk.Stack {
     geminiSecret.grantRead(recoWorkerFn);
 
     // The API handler: computes free slots, writes pending, invokes the worker
-    // async, returns instantly. Short timeout — it does no model work.
+    // async, returns instantly. Short timeout - it does no model work.
     const recommendFn = makeFn(
       'RecommendFn',
       'recommend.handler',
@@ -122,6 +124,40 @@ export class ApiStack extends cdk.Stack {
 
     const getRecosFn = makeFn('GetRecosFn', 'get_recos.handler');
     table.grantReadData(getRecosFn);
+
+    // --- Team task board (strong-to-have) ---
+    const createTaskFn = makeFn('CreateTaskFn', 'create_task.handler');
+    const updateTaskFn = makeFn('UpdateTaskFn', 'update_task.handler');
+    const getTasksFn = makeFn('GetTasksFn', 'get_tasks.handler');
+    table.grantReadWriteData(createTaskFn);
+    table.grantReadWriteData(updateTaskFn);
+    table.grantReadData(getTasksFn);
+
+    // --- Reminders (strong-to-have): EventBridge -> Telegram digest ---
+    const telegramSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'TelegramSecret', TELEGRAM_SECRET_NAME);
+    const remindersFn = makeFn('RemindersFn', 'reminders.handler', { TELEGRAM_SECRET_NAME }, 30, 256);
+    table.grantReadData(remindersFn);
+    telegramSecret.grantRead(remindersFn);
+
+    // Timezone-aware daily schedule at 07:00 Africa/Lagos. Scheduler (not a
+    // plain rule) so the local time is honoured without UTC/DST hand-math.
+    const schedulerRole = new iam.Role(this, 'SchedulerRole', {
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+    });
+    remindersFn.grantInvoke(schedulerRole);
+    new scheduler.CfnSchedule(this, 'DailyReminder', {
+      name: `cv-${props.stage}-daily-reminder`,
+      description: 'Convene sends a task + conflict digest every morning.',
+      flexibleTimeWindow: { mode: 'OFF' },
+      scheduleExpression: 'cron(0 7 * * ? *)',
+      scheduleExpressionTimezone: 'Africa/Lagos',
+      target: {
+        arn: remindersFn.functionArn,
+        roleArn: schedulerRole.roleArn,
+        retryPolicy: { maximumRetryAttempts: 2 },
+      },
+    });
 
     this.api = new apigw.RestApi(this, 'Api', {
       restApiName: `cv-${props.stage}`,
@@ -152,6 +188,13 @@ export class ApiStack extends cdk.Stack {
     this.api.root
       .addResource('recommendations')
       .addMethod('GET', new apigw.LambdaIntegration(getRecosFn));
+
+    // Task board: GET public, writes key-gated. PATCH on /tasks/{id}.
+    const tasks = this.api.root.addResource('tasks');
+    tasks.addMethod('GET', new apigw.LambdaIntegration(getTasksFn));
+    tasks.addMethod('POST', new apigw.LambdaIntegration(createTaskFn), { apiKeyRequired: true });
+    tasks.addResource('{id}')
+      .addMethod('PATCH', new apigw.LambdaIntegration(updateTaskFn), { apiKeyRequired: true });
 
     const key = this.api.addApiKey('OpsKey', { apiKeyName: `cv-${props.stage}-ops` });
     const plan = this.api.addUsagePlan('OpsPlan', {

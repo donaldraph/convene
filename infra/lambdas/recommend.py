@@ -1,11 +1,11 @@
-"""POST /recommend — kick off a best-time recommendation (async).
+"""POST /recommend - kick off a best-time recommendation (async).
 
 Body: {"title": "...", "duration_min": 90, "within_days": 14}
 
 Reads the cached academic/community events (populated by /sync), computes
 conflict-free candidate slots deterministically, writes a PENDING recommendation
 record, and hands the slow model ranking to an async worker Lambda so this
-endpoint returns instantly — free-tier model latency can exceed API Gateway's
+endpoint returns instantly - free-tier model latency can exceed API Gateway's
 29s cap, so the model call must not run inline. The dashboard polls
 GET /recommendations until the record flips to done.
 
