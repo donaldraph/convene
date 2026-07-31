@@ -48,8 +48,15 @@ def find_calendars(token, names):
     """
     items = _get(CAL_LIST_URL, token).get("items", [])
     by_name = {c.get("summary", "").strip().lower(): c for c in items}
+    # The literal "primary" always resolves to the account's main calendar,
+    # whatever its display name (Google names it after the email). Lets a user
+    # use their existing primary as one source without renaming anything.
+    primary = next((c for c in items if c.get("primary")), None)
     found, missing = {}, []
     for name in names:
+        if name.strip().lower() == "primary" and primary:
+            found[name] = {"id": "primary", "timeZone": primary.get("timeZone", "UTC")}
+            continue
         cal = by_name.get(name.strip().lower())
         if cal:
             found[name] = {"id": cal["id"], "timeZone": cal.get("timeZone", "UTC")}
