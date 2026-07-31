@@ -86,6 +86,28 @@ export class ApiStack extends cdk.Stack {
     const getConflictsFn = makeFn('GetConflictsFn', 'get_conflicts.handler');
     table.grantReadData(getConflictsFn);
 
+    // Best-time recommendation — the load-bearing AI. Reads cached events,
+    // computes free slots in code, Gemini ranks them. 60s/512MB for the model
+    // call. gemini-3.5-flash: 2.5-flash and the *-latest aliases 404 for this
+    // key; 3.5-flash is verified working. Override with -c model=... at deploy.
+    const geminiSecret = secretsmanager.Secret.fromSecretNameV2(
+      this, 'GeminiSecret', GEMINI_SECRET_NAME);
+    const recommendFn = makeFn(
+      'RecommendFn',
+      'recommend.handler',
+      {
+        GEMINI_SECRET_NAME,
+        MODEL_ID: this.node.tryGetContext('model') || 'gemini-3.5-flash',
+      },
+      60,
+      512,
+    );
+    table.grantReadWriteData(recommendFn);
+    geminiSecret.grantRead(recommendFn);
+
+    const getRecosFn = makeFn('GetRecosFn', 'get_recos.handler');
+    table.grantReadData(getRecosFn);
+
     this.api = new apigw.RestApi(this, 'Api', {
       restApiName: `cv-${props.stage}`,
       deployOptions: { stageName: props.stage, tracingEnabled: true },
@@ -107,6 +129,14 @@ export class ApiStack extends cdk.Stack {
     this.api.root
       .addResource('conflicts')
       .addMethod('GET', new apigw.LambdaIntegration(getConflictsFn));
+
+    // POST /recommend spends model quota -> API key. GET /recommendations public.
+    this.api.root
+      .addResource('recommend')
+      .addMethod('POST', new apigw.LambdaIntegration(recommendFn), { apiKeyRequired: true });
+    this.api.root
+      .addResource('recommendations')
+      .addMethod('GET', new apigw.LambdaIntegration(getRecosFn));
 
     const key = this.api.addApiKey('OpsKey', { apiKeyName: `cv-${props.stage}-ops` });
     const plan = this.api.addUsagePlan('OpsPlan', {
