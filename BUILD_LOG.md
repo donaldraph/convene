@@ -27,3 +27,18 @@ Decisions made up front, so later phases inherit them instead of relitigating:
 Proof: `npm install` + clean `tsc` + `cdk synth` produced all three templates
 (cv-dev-data, cv-dev-api, cv-dev-hosting) on the first run. No failures this
 phase, so no symptom/root-cause entries yet.
+
+### Early deploy (2026-07-31, same day)
+
+Deployed the scaffold to AWS immediately instead of waiting for step 8, so a
+reachable URL exists from day one. One pass, no failures, 486s total:
+
+- Site: https://d2huf9zo4vm99c.cloudfront.net (honest empty state, config.js
+  injected with the API base)
+- API: https://styvk0z2zd.execute-api.us-east-1.amazonaws.com/dev/ where
+  GET /health returns ok with a live table_status ACTIVE against
+  cv-convene-dev, proving API Gateway, Lambda, IAM, and the table are wired
+  end to end
+- One warning to keep an eye on, not a failure: cdk noted the
+  crossStackReferencesDefaultStrong construct annotation on cv-dev-api.
+  Same behaviour study-conscience deploys with; nothing to fix now.

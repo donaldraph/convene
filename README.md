@@ -45,4 +45,10 @@ OAuth with a stored refresh token.
 
 ## Status
 
-Scaffolding. Nothing deployed yet. See BUILD_LOG.md for the honest history.
+Phase 1 deployed early so a reachable URL exists from day one:
+
+- Dashboard (empty state for now): https://d2huf9zo4vm99c.cloudfront.net
+- API health: https://styvk0z2zd.execute-api.us-east-1.amazonaws.com/dev/health
+
+Calendar sync, conflict detection, recommendations, tasks, and reminders are
+not built yet. See BUILD_LOG.md for the honest history.
