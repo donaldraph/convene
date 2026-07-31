@@ -83,4 +83,34 @@ Secrets now in place: convene/gemini, convene/google-oauth (client id +
 secret + refresh token, calendar.readonly), convene/telegram. Verified by a
 real calendarList read: 4 calendars visible, but none of them is an
 academic/community pair yet; which calendars play those roles is the owner's
-call, pending at time of writing.
+call, pending at time of writing. Decision: create two fresh calendars named
+"Academic" and "Community" and populate them with real entries.
+
+## Phase 3: conflict detection (2026-07-31)
+
+Built and deployed same day:
+
+- gcal.py: stdlib calendar client (refresh-token exchange, calendars found BY
+  NAME so nothing hardcodes an id, windowed fetch with paging, recurring
+  events expanded, cancelled dropped).
+- conflicts.py: pure deterministic engine. hard = timed-vs-timed interval
+  overlap; same_day = an all-day event sharing a date with the other
+  calendar's event (flagged as a warning class, not a certain collision).
+  Stable conflict ids (hash of the event-id pair) so status survives
+  re-syncs. 12 unit tests, all green, including back-to-back-is-legal and
+  cross-timezone overlap.
+- sync.py: POST /sync (API-key gated) reconciles the cache both ways
+  (upserts fresh, DELETES vanished/moved events so a moved event cannot
+  leave a phantom conflict) then upserts conflicts by stable id and clears
+  the ones that no longer exist. get_conflicts.py: GET /conflicts public
+  read with last-sync freshness.
+
+Live proof of the chain, before the calendars exist: POST /sync against the
+deployed API returned the honest 424 "calendar(s) not found by name:
+Academic, Community". That one response exercises API key, Lambda, Secrets
+Manager, the Google token exchange, and the calendarList lookup for real.
+The only thing missing is the calendars themselves.
+
+One deploy-time wrinkle, not a code fix: a freshly created API key returns
+403 Forbidden for ~30-60s until it propagates through the usage plan. First
+call after the wait succeeded. Same behaviour standup-brief saw.
