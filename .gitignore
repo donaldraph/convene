@@ -1,0 +1,23 @@
+# node / cdk
+node_modules/
+cdk.out/
+*.tsbuildinfo
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# secrets and local env (never commit)
+.env
+*.env
+secrets.json
+token.json
+client_secret*.json
+
+# cdk deploy outputs (contain account-specific urls, regenerate per deploy)
+cdk-outputs.json
+
+# os
+.DS_Store
