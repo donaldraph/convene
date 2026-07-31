@@ -2,6 +2,9 @@
 node_modules/
 cdk.out/
 *.tsbuildinfo
+# tsc emit; cdk runs ts-node straight off the .ts sources
+infra/**/*.js
+infra/**/*.d.ts
 
 # python
 __pycache__/
