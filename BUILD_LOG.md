@@ -114,3 +114,39 @@ The only thing missing is the calendars themselves.
 One deploy-time wrinkle, not a code fix: a freshly created API key returns
 403 Forbidden for ~30-60s until it propagates through the usage plan. First
 call after the wait succeeded. Same behaviour standup-brief saw.
+
+### The calendar-account saga, and the design change it forced
+
+**Symptom:** four rounds of "create Academic + Community calendars" all ended
+with the sync reporting the calendars not found, even after OAuth was pointed
+at the right account.
+**Root cause, uncovered by enumerating events per calendar via the API:** on a
+shared machine with several Google accounts signed in, calendar/event creation
+kept landing in whichever account the browser had active, not the connected
+one. The refresh token first belonged to donaswagger@gmail.com (empty), was
+re-minted for donaldraph.dev@gmail.com (which held the real AWS events on its
+PRIMARY calendar), but the "Academic"/"Community" sub-calendars never appeared
+because they were made elsewhere. Ultimately the owner added everything to ONE
+calendar (primary), distinguishing type by event TITLE ("academic", "Academic",
+"outreach", "tour").
+**Fix (checkpointed with the owner before deviating):** added a second source
+mode. gcal now resolves the literal name `primary`; sync gained a split mode
+(SPLIT_CALENDAR) that reads ONE calendar and classifies each event academic vs
+community by a title tag (classify.split_by_tag, ACADEMIC_TAG default
+"academic"). Deployed with -c splitCalendar=primary. The two-calendar mode is
+still there for anyone who keeps them separate.
+**Reasoning:** matching how the user actually keeps their calendar beats making
+them restructure it, and single-calendar-with-tags is arguably the more
+realistic student setup. The AI's job (best-time recommendation) is unchanged;
+this only affects where the two event sets come from.
+
+**Live proof on real data (2026-07-31):** POST /sync in split mode returned
+mode=split, academic 2 / community 2 events, and detected **2 hard conflicts** —
+the owner's "Academic" event on Aug 1 12:00-13:00 collides with both "outreach"
+and "tour" at the same time. GET /conflicts returns both with stable ids. A
+second sync returned open_new 0 / still_open 2 / cleared 0, proving the stable
+conflict ids and exactly-once open/keep/clear machinery hold on real data, not
+just in unit tests. Conflict detection — the first half of the spine — is done
+and working end to end.
+
+17 unit tests total (12 conflict engine + 5 classifier), all green.
