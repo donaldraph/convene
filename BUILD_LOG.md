@@ -23,3 +23,7 @@ Decisions made up front, so later phases inherit them instead of relitigating:
 - **API scaffold ships one real route (GET /health)** and nothing else. No
   501 theatre for routes that do not exist yet; routes land with the phase
   that implements them.
+
+Proof: `npm install` + clean `tsc` + `cdk synth` produced all three templates
+(cv-dev-data, cv-dev-api, cv-dev-hosting) on the first run. No failures this
+phase, so no symptom/root-cause entries yet.
