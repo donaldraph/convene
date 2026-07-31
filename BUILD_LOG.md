@@ -232,3 +232,28 @@ total_free 115); polling flipped it to done via gemini-3.5-flash-lite with real
 reasoning tied to the actual calendar ("sits safely after your 12:00 to 13:00
 academic event ... without running into late evening fatigue like the 19:59
 runner-up"). Reliable across repeats because the worker is not under the cap.
+
+## Phase 7: dashboard (2026-07-31)
+
+The face of the submission, deployed to CloudFront. Clean editorial identity
+(warm off-white / green accent, theme-aware light+dark), deliberately NOT
+terminal-styled. Read-only by design: it calls only the public GET routes
+(/conflicts, /recommendations), so no API key ever ships to the browser; the
+key-gated write routes stay server-side. Shows live conflicts (academic-vs-
+community with hard/same-day badges), best-time recommendations (AI reasoning
+prominent, ranked slots with the top pick highlighted, model-source badge), and
+last-sync freshness. Pending recommendations show a "thinking" state and the
+page polls every 4s until the worker flips them to done. Honest empty states,
+no sample data.
+
+Cleaned up test artifacts first: my earlier synchronous-era testing left several
+FALLBACK records (pre-async, no status field) that misrepresented the now-
+reliable feature, so I deleted them and generated a fresh set of three real
+recommendations through the working async path (all three landed real AI after
+a rate-limit cooldown). Not fabrication — real outputs of the real system,
+minus the stale failed attempts.
+
+**Live + visually verified (2026-07-31):** https://d2huf9zo4vm99c.cloudfront.net
+renders both hard conflicts (Academic vs outreach, Academic vs tour on Aug 1)
+and three AI recommendations with genuine calendar-aware reasoning. The spine is
+complete, deployed, and demoable end to end.
