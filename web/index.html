@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Convene</title>
+<style>
+  :root {
+    --bg: #f7f5f0;
+    --ink: #1f2933;
+    --muted: #5f6b76;
+    --accent: #0e7c66;
+    --card: #ffffff;
+    --line: #e4e0d6;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    padding: 2rem 1rem;
+  }
+  main { max-width: 40rem; width: 100%; }
+  .mark {
+    display: inline-flex; align-items: center; gap: .6rem;
+    margin-bottom: 1.25rem;
+  }
+  .mark .dot {
+    width: .9rem; height: .9rem; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(14, 124, 102, .15);
+  }
+  h1 { font-size: 1.7rem; letter-spacing: -.02em; }
+  .tagline { color: var(--muted); margin-top: .35rem; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.5rem;
+    margin-top: 1.5rem;
+    box-shadow: 0 1px 3px rgba(31, 41, 51, .06);
+  }
+  .card h2 { font-size: 1rem; color: var(--accent); margin-bottom: .5rem; }
+  .card p { color: var(--muted); line-height: 1.55; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark"><span class="dot"></span><h1>Convene</h1></div>
+  <p class="tagline">Two calendars, one community, zero collisions.</p>
+  <div class="card">
+    <h2>Nothing to show yet</h2>
+    <p>The dashboard is still being built. When it lands, this page will show
+       detected conflicts between the academic and community calendars,
+       recommended times for new events, and the team task board. No sample
+       data will ever be shown here as if it were real.</p>
+  </div>
+  <script src="config.js"></script>
+</main>
+</body>
+</html>
