@@ -71,6 +71,10 @@ export class ApiStack extends cdk.Stack {
         GOOGLE_OAUTH_SECRET_NAME,
         ACADEMIC_CAL_NAME: this.node.tryGetContext('academicCal') || 'Academic',
         COMMUNITY_CAL_NAME: this.node.tryGetContext('communityCal') || 'Community',
+        // Single-calendar mode: read this one calendar and split its events into
+        // academic vs community by a title tag. Empty = classic two-calendar mode.
+        SPLIT_CALENDAR: this.node.tryGetContext('splitCalendar') || '',
+        ACADEMIC_TAG: this.node.tryGetContext('academicTag') || 'academic',
         SYNC_DAYS: this.node.tryGetContext('syncDays') || '30',
       },
       60,

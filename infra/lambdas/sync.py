@@ -1,24 +1,31 @@
-"""POST /sync — pull both calendars, reconcile the cache, detect conflicts.
+"""POST /sync — pull the calendar(s), reconcile the cache, detect conflicts.
 
-The one write-path for calendar state. Steps, all real:
-  1. refresh-token -> access token; resolve the two calendars BY NAME
-  2. fetch every event in the forward window (default 30 days)
-  3. reconcile the EVENT#<source> partitions: upsert what exists now, DELETE
-     cached events that vanished or moved (a moved event changes its SK, and a
-     stale SK would keep a phantom conflict alive)
-  4. run the deterministic conflict engine over the fresh sets
-  5. upsert conflicts by stable id: new ones open, still-present ones keep
-     their status, gone ones get status=cleared (kept for history)
+The one write-path for calendar state. Two source modes:
+
+  two-calendar (default): resolve an academic calendar and a community calendar
+    BY NAME and read each.
+  split (SPLIT_CALENDAR set): read ONE calendar and classify each event as
+    academic vs community by a title tag (classify.split_by_tag). This fits a
+    student who keeps a single Google Calendar and labels event type in the
+    title.
+
+Either way the tail is identical:
+  - reconcile the EVENT#<source> partitions: upsert what exists now, DELETE
+    cached events that vanished or moved (a moved event changes its SK, and a
+    stale SK would keep a phantom conflict alive)
+  - run the deterministic conflict engine over the fresh academic/community sets
+  - upsert conflicts by stable id: new ones open, still-present ones keep their
+    status, gone ones get status=cleared (kept for history)
 
 If a named calendar is missing the response says so honestly and nothing is
 half-synced: better a loud 424 than a silent half-empty cache.
 """
-import datetime
 import json
 import os
 
 from boto3.dynamodb.conditions import Key
 
+import classify
 import conflicts as conflict_engine
 import gcal
 from common import (
@@ -34,6 +41,9 @@ from common import (
 OAUTH_SECRET_NAME = os.environ.get("GOOGLE_OAUTH_SECRET_NAME", "convene/google-oauth")
 ACADEMIC_CAL = os.environ.get("ACADEMIC_CAL_NAME", "Academic")
 COMMUNITY_CAL = os.environ.get("COMMUNITY_CAL_NAME", "Community")
+# Split mode: when set, read this one calendar and tag-classify its events.
+SPLIT_CALENDAR = os.environ.get("SPLIT_CALENDAR", "").strip()
+ACADEMIC_TAG = os.environ.get("ACADEMIC_TAG", "academic")
 SYNC_DAYS = int(os.environ.get("SYNC_DAYS", "30"))
 
 SOURCES = {"academic": ACADEMIC_CAL, "community": COMMUNITY_CAL}
@@ -88,30 +98,60 @@ def _reconcile_conflicts(found):
     return {"open_new": opened, "still_open": kept, "cleared": cleared}
 
 
+def _load_events(token, start, end):
+    """Fetch and label events per mode. Returns (per_source, labels, missing).
+
+    per_source: {"academic": [...], "community": [...]}
+    labels:     {"academic": <display name>, "community": <display name>}
+    missing:    list of calendar names not found (caller returns 424), or []
+    """
+    if SPLIT_CALENDAR:
+        found, missing = gcal.find_calendars(token, [SPLIT_CALENDAR])
+        if missing:
+            return None, None, missing
+        events = gcal.fetch_window(token, found[SPLIT_CALENDAR]["id"], start, end)
+        academic, community = classify.split_by_tag(events, ACADEMIC_TAG)
+        labels = {
+            "academic": f"{SPLIT_CALENDAR} (title contains '{ACADEMIC_TAG}')",
+            "community": f"{SPLIT_CALENDAR} (other events)",
+        }
+        return {"academic": academic, "community": community}, labels, []
+
+    found, missing = gcal.find_calendars(token, list(SOURCES.values()))
+    if missing:
+        return None, None, missing
+    per_source = {
+        source: gcal.fetch_window(token, found[name]["id"], start, end)
+        for source, name in SOURCES.items()
+    }
+    return per_source, dict(SOURCES), []
+
+
 def run_sync():
     oauth = get_secret(OAUTH_SECRET_NAME)
     token = gcal.access_token(oauth)
 
-    found, missing = gcal.find_calendars(token, list(SOURCES.values()))
+    start, end = gcal.window(SYNC_DAYS)
+    per_source, labels, missing = _load_events(token, start, end)
     if missing:
         return None, missing
 
-    start, end = gcal.window(SYNC_DAYS)
-    result = {"window_start": start.isoformat(), "window_end": end.isoformat()}
-    per_source_events = {}
-    for source, name in SOURCES.items():
-        events = gcal.fetch_window(token, found[name]["id"], start, end)
-        per_source_events[source] = events
-        result[source] = {"calendar": name, **_reconcile_events(source, events)}
+    result = {
+        "window_start": start.isoformat(),
+        "window_end": end.isoformat(),
+        "mode": "split" if SPLIT_CALENDAR else "two-calendar",
+    }
+    for source in ("academic", "community"):
+        result[source] = {"calendar": labels[source],
+                          **_reconcile_events(source, per_source[source])}
 
-    detected = conflict_engine.detect(
-        per_source_events["academic"], per_source_events["community"])
+    detected = conflict_engine.detect(per_source["academic"], per_source["community"])
     result["conflicts"] = _reconcile_conflicts(detected)
 
     now = local_now().isoformat()
-    for source, name in SOURCES.items():
+    for source in ("academic", "community"):
         TABLE.put_item(Item={
-            "PK": SYNC_PK, "SK": source, "calendar": name, "at": now,
+            "PK": SYNC_PK, "SK": source, "calendar": labels[source], "at": now,
             "events": result[source]["cached"],
         })
     return result, None
@@ -127,8 +167,8 @@ def handler(event, context):
         return resp(424, {
             "ok": False,
             "error": f"calendar(s) not found by name: {', '.join(missing)}",
-            "hint": "create/rename them in Google Calendar or override "
-                    "ACADEMIC_CAL_NAME / COMMUNITY_CAL_NAME",
+            "hint": "create/rename them in Google Calendar, or set SPLIT_CALENDAR "
+                    "to read one calendar and tag events by title",
         })
     print("[sync] " + json.dumps(result))
     return resp(200, {"ok": True, **result})
