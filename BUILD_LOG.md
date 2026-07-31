@@ -42,3 +42,45 @@ reachable URL exists from day one. One pass, no failures, 486s total:
 - One warning to keep an eye on, not a failure: cdk noted the
   crossStackReferencesDefaultStrong construct annotation on cv-dev-api.
   Same behaviour study-conscience deploys with; nothing to fix now.
+
+## Phase 2: Google Calendar OAuth + secrets (2026-07-31)
+
+**Symptom:** the plan said "reuse the refresh-token pattern from standup-brief",
+but Secrets Manager has no standup-brief/google-oauth secret.
+**Root cause:** standup-brief never minted its refresh token; its own BUILD_LOG
+records the secret as "doesn't exist yet" and its calendar ran as unavailable.
+**Fix:** reuse the surviving piece, the Desktop OAuth client (project
+standup-brief, client JSON still in ~/Downloads) plus its one-time
+get_refresh_token.py approach, and mint the token now for convene.
+**Reasoning:** the pattern was proven, the credential was not. Reusing the
+client avoids a new Google Cloud project and consent screen from scratch.
+
+**Symptom:** first consent attempt failed with Google's "access blocked, app
+not verified" page before the Allow button.
+**Root cause:** the OAuth consent screen is in Testing mode, and the
+calendar-owning account was not on the test-user list. This is almost
+certainly the same wall that stopped standup-brief's token from ever being
+minted.
+**Fix:** added the account as a test user (console, Audience page); consent
+then went through with the expected unverified-app interstitial.
+**Reasoning:** fastest unblock for a solo tool. Known cost, logged before it
+bites: Testing-mode refresh tokens expire after 7 days, which covers the
+Aug 3 deadline but not life after it. Publishing the app removes the expiry
+and is the post-deadline fix.
+
+Also this phase, two smaller checks:
+
+- Gemini key stored as convene/gemini and verified with a live
+  generateContent call. The gating memory from study-conscience has widened:
+  gemini-2.5-flash AND the *-latest aliases all 404 for this key even though
+  models.list shows them. gemini-3.5-flash answered HTTP 200 for real, so it
+  is the default model id (still overridable with -c model=...). Lesson:
+  verify per key with a real call; models.list is not evidence.
+- Telegram creds copied to convene/telegram from study-conscience (same bot,
+  chat id confirmed matching).
+
+Secrets now in place: convene/gemini, convene/google-oauth (client id +
+secret + refresh token, calendar.readonly), convene/telegram. Verified by a
+real calendarList read: 4 calendars visible, but none of them is an
+academic/community pair yet; which calendars play those roles is the owner's
+call, pending at time of writing.
