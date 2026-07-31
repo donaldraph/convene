@@ -257,3 +257,35 @@ minus the stale failed attempts.
 renders both hard conflicts (Academic vs outreach, Academic vs tour on Aug 1)
 and three AI recommendations with genuine calendar-aware reasoning. The spine is
 complete, deployed, and demoable end to end.
+
+## Phases 5-6: task board + reminders (2026-07-31, strong-to-have)
+
+The spine was already secure, so these were built to the same bar with the
+understanding that either gets cut if it does not work end to end. Both work.
+
+Task board (phase 5): create_task / get_tasks / update_task lambdas over the
+TASK partition. POST and PATCH are key-gated (they write the shared board); GET
+is public for the dashboard. A task is title + assignee + optional due date +
+status (open/doing/done), sorted active-first then by due date. update_task uses
+a ConditionExpression so a PATCH to a missing id is an honest 404, not a silent
+upsert. Live proof: created two real tasks (venue booking -> Ada, intro slides
+-> Chidi), PATCHed one to doing, listed them back sorted. Added a task panel to
+the dashboard (status badge, assignee, due date).
+
+Reminders (phase 6): a reminders lambda on an EventBridge Scheduler cron at
+07:00 Africa/Lagos (timezone-aware Scheduler, not a plain UTC rule) pulls the
+active tasks and near-term open conflicts, formats a morning digest, and sends
+it to Telegram (convene/telegram, the same bot as study-conscience, chat
+8273131836). Missing creds degrade to logging so a scheduled run never crashes;
+an empty board and no conflicts produce a short "all clear", never fabricated
+items. Live proof: invoked the deployed lambda directly, it reported
+{tasks: 2, conflicts: 2, sent: true} -- a real Telegram message delivered.
+
+Formatting sweep: removed every em dash from the repo (docs, UI copy, code
+comments), per the no-em-dashes house rule, replacing with hyphens. tsc + 27
+unit tests still green afterward.
+
+Status at end of session: all four features (conflict detection, best-time
+recommendation, task assignment, reminders) work end to end on live AWS. Nothing
+shipped broken; nothing cut. The two spine features carry the submission, the
+two strong-to-have features landed as a bonus.
