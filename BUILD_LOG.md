@@ -203,3 +203,32 @@ end to end on live data.
 
 27 unit tests total (12 conflict + 5 classifier + 10 free-slot/shortlist/model),
 all green.
+
+### Phase 4 follow-up: async, because free-tier latency vs the 29s cap
+
+**Symptom:** even after tuning models and shortlisting, POST /recommend only
+succeeded ~2-4 times in 6 — the rest returned the honest deterministic fallback
+after both models timed out. Repeated rapid calls made it worse.
+**Root cause:** two compounding facts. (1) API Gateway REST APIs hard-kill any
+request at 29s. (2) Gemini free-tier latency is highly variable and, under my
+own rapid testing, rate-limited into multi-second queueing — from Lambda,
+individual calls sometimes exceeded even 20s. A synchronous endpoint capped at
+29s cannot reliably wait that out, no matter how the model budget is split.
+**Fix:** made /recommend asynchronous. The API handler computes free slots +
+shortlist (fast, deterministic), writes a PENDING recommendation, invokes a
+worker Lambda (InvocationType=Event), and returns a pending id in ~2s. The
+worker does the Gemini ranking with the full 60s Lambda timeout (primary lite
+40s, fallback flash-latest 12s) and flips the record to done. The dashboard
+polls GET /recommendations until status=done. Errors are recorded as status
+error, never left pending.
+**Reasoning:** the 29s cap is a property of API Gateway, not of the work; the
+model ranking genuinely can take longer than that on a free tier. Decoupling
+the slow call from the request removes the cliff entirely instead of shaving
+timeouts to barely fit. This is the standard fix and it made the star feature
+reliable.
+
+**Live proof (2026-07-31):** POST returned pending in 1.9s (candidate_count 10,
+total_free 115); polling flipped it to done via gemini-3.5-flash-lite with real
+reasoning tied to the actual calendar ("sits safely after your 12:00 to 13:00
+academic event ... without running into late evening fatigue like the 19:59
+runner-up"). Reliable across repeats because the worker is not under the cap.
