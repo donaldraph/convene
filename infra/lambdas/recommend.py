@@ -1,16 +1,21 @@
-"""POST /recommend — recommend the best time for a NEW event.
+"""POST /recommend — kick off a best-time recommendation (async).
 
 Body: {"title": "...", "duration_min": 90, "within_days": 14}
 
 Reads the cached academic/community events (populated by /sync), computes
-conflict-free candidate slots deterministically, then asks the model to rank
-them with judgment. Stores the recommendation under RECO for the dashboard and
-returns it. Requires an API key: it spends model quota.
+conflict-free candidate slots deterministically, writes a PENDING recommendation
+record, and hands the slow model ranking to an async worker Lambda so this
+endpoint returns instantly — free-tier model latency can exceed API Gateway's
+29s cap, so the model call must not run inline. The dashboard polls
+GET /recommendations until the record flips to done.
+
+Requires an API key: it spends model quota.
 """
 import datetime
 import json
 import os
 
+import boto3
 from boto3.dynamodb.conditions import Key
 
 import model as reco_model
@@ -18,6 +23,9 @@ from common import EVENT_PK, RECO_PK, TABLE, local_now, resp
 
 APP_TZ_NAME = os.environ.get("APP_TZ", "Africa/Lagos")
 MAX_WITHIN_DAYS = int(os.environ.get("MAX_WITHIN_DAYS", "30"))
+WORKER_NAME = os.environ.get("RECO_WORKER_NAME", "")
+
+_lambda = boto3.client("lambda")
 
 
 def _cached_events(source):
@@ -47,30 +55,42 @@ def handler(event, context):
     now = datetime.datetime.now(datetime.timezone.utc)
     window_end = now + datetime.timedelta(days=within_days)
     all_free = reco_model.free_slots(duration_min, academic, community, now, window_end)
-    # Rank a spread the model can handle fast, not all N half-hourly slots.
     slots = reco_model.shortlist(all_free)
 
-    try:
-        rec = reco_model.recommend(
-            title, duration_min, slots, academic, community, APP_TZ_NAME)
-    except Exception as exc:  # noqa: BLE001 — never 500 on the model path
-        print(f"[recommend] model error: {type(exc).__name__}: {exc}")
-        return resp(502, {"ok": False, "error": type(exc).__name__})
-
     requested_at = local_now().isoformat()
-    TABLE.put_item(Item={
-        "PK": RECO_PK, "SK": requested_at,
-        "title": title, "duration_min": duration_min, "within_days": within_days,
-        "source": rec["source"], "reasoning": rec["reasoning"],
-        "ranked": rec["ranked"], "candidate_count": len(slots),
-        "total_free": len(all_free),
-    })
-
-    print("[recommend] " + json.dumps({
-        "title": title, "shortlisted": len(slots), "total_free": len(all_free),
-        "source": rec["source"]}))
-    return resp(200, {
-        "ok": True, "requested_at": requested_at, "title": title,
+    base = {
+        "PK": RECO_PK, "SK": requested_at, "title": title,
         "duration_min": duration_min, "within_days": within_days,
-        "candidate_count": len(slots), "total_free": len(all_free), **rec,
+        "candidate_count": len(slots), "total_free": len(all_free),
+    }
+
+    # No free slot: resolve immediately, honestly, no worker needed.
+    if not slots:
+        rec = reco_model.recommend(title, duration_min, [], academic, community, APP_TZ_NAME)
+        TABLE.put_item(Item={**base, "status": "done", "source": rec["source"],
+                             "reasoning": rec["reasoning"], "ranked": rec["ranked"]})
+        return resp(200, {"ok": True, "status": "done", "requested_at": requested_at,
+                          "title": title, **rec, "candidate_count": 0, "total_free": 0})
+
+    # Write pending, then hand the slow model call to the worker.
+    TABLE.put_item(Item={**base, "status": "pending", "source": "pending",
+                         "reasoning": "", "ranked": []})
+    _lambda.invoke(
+        FunctionName=WORKER_NAME,
+        InvocationType="Event",
+        Payload=json.dumps({
+            "requested_at": requested_at, "title": title, "duration_min": duration_min,
+            "slots": slots, "academic": academic, "community": community,
+            "timezone": APP_TZ_NAME,
+        }).encode(),
+    )
+
+    print("[recommend] queued " + json.dumps({
+        "requested_at": requested_at, "title": title,
+        "shortlisted": len(slots), "total_free": len(all_free)}))
+    return resp(202, {
+        "ok": True, "status": "pending", "requested_at": requested_at,
+        "title": title, "duration_min": duration_min, "within_days": within_days,
+        "candidate_count": len(slots), "total_free": len(all_free),
+        "poll": "GET /recommendations",
     })

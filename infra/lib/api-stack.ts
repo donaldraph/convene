@@ -86,24 +86,39 @@ export class ApiStack extends cdk.Stack {
     const getConflictsFn = makeFn('GetConflictsFn', 'get_conflicts.handler');
     table.grantReadData(getConflictsFn);
 
-    // Best-time recommendation — the load-bearing AI. Reads cached events,
-    // computes free slots in code, Gemini ranks them. 60s/512MB for the model
-    // call. gemini-3.5-flash: 2.5-flash and the *-latest aliases 404 for this
-    // key; 3.5-flash is verified working. Override with -c model=... at deploy.
+    // Best-time recommendation — the load-bearing AI, run ASYNC. Free-tier
+    // model latency is variable and can exceed API Gateway's hard 29s cap, so
+    // the model call cannot run inline. The worker does the Gemini ranking with
+    // the full Lambda timeout; the API handler just enqueues and returns a
+    // pending id. Model reliability measured from Lambda (2026-07-31): lite is
+    // the reliable one, so it is primary with a generous budget, flash-latest a
+    // backup, then a labelled deterministic fallback.
     const geminiSecret = secretsmanager.Secret.fromSecretNameV2(
       this, 'GeminiSecret', GEMINI_SECRET_NAME);
+    const modelEnv = {
+      GEMINI_SECRET_NAME,
+      MODEL_ID: this.node.tryGetContext('model') || 'gemini-3.5-flash-lite',
+      MODEL_FALLBACKS: this.node.tryGetContext('modelFallbacks') || 'gemini-flash-latest',
+      GEMINI_TIMEOUT_S: '40',
+      GEMINI_FALLBACK_TIMEOUT_S: '12',
+    };
+
+    // The worker: full 60s to absorb slow free-tier responses. No API in front.
+    const recoWorkerFn = makeFn('RecoWorkerFn', 'reco_worker.handler', modelEnv, 60, 512);
+    table.grantReadWriteData(recoWorkerFn);
+    geminiSecret.grantRead(recoWorkerFn);
+
+    // The API handler: computes free slots, writes pending, invokes the worker
+    // async, returns instantly. Short timeout — it does no model work.
     const recommendFn = makeFn(
       'RecommendFn',
       'recommend.handler',
-      {
-        GEMINI_SECRET_NAME,
-        MODEL_ID: this.node.tryGetContext('model') || 'gemini-3.5-flash',
-      },
-      60,
+      { RECO_WORKER_NAME: recoWorkerFn.functionName },
+      15,
       512,
     );
     table.grantReadWriteData(recommendFn);
-    geminiSecret.grantRead(recommendFn);
+    recoWorkerFn.grantInvoke(recommendFn);
 
     const getRecosFn = makeFn('GetRecosFn', 'get_recos.handler');
     table.grantReadData(getRecosFn);

@@ -13,10 +13,11 @@ So we never ask the model "is this slot free" (code knows that for certain);
 we ask "given these free slots and everything on both calendars, which is best
 for this event, and why". No AI-washing of date math.
 
-Wired to Google Gemini (gemini-3.5-flash by default; override with MODEL_ID).
-Key from Secrets Manager. If the key is missing or the call fails, this returns
-a clearly-labelled deterministic fallback (earliest free slot) so the endpoint
-never lies about being AI when it is not.
+Wired to Google Gemini (gemini-flash-latest by default, with a fallback chain;
+override with MODEL_ID / MODEL_FALLBACKS). Key from Secrets Manager. If the key
+is missing or every model call fails, this returns a clearly-labelled
+deterministic fallback (earliest free slot) so the endpoint never lies about
+being AI when it is not.
 """
 import datetime
 import json
@@ -93,11 +94,10 @@ Community events:
 
 Your job, using judgment plain date-math cannot:
 1. ranked: order the candidate slots best-first. For each, copy its exact start
-   and end from the list and add "why" — one sentence on the trade-off that
-   sets its rank (protecting revision time before a test, avoiding a punishing
-   gap between commitments, keeping the event in sociable hours, giving buffer
-   after a class). Rank ALL provided slots.
-2. reasoning: 2 to 4 sentences addressed to "you", naming your single best slot
+   and end from the list and add "why" — a SHORT phrase, at most 12 words, on
+   the trade-off that sets its rank (buffer before a test, avoiding a punishing
+   gap, sociable hours, breathing room after a class). Rank ALL provided slots.
+2. reasoning: 2 to 3 sentences addressed to "you", naming your single best slot
    and the concrete reason it wins over the runner-up. Be specific with days
    and times; do not invent events that are not listed.
 
@@ -144,7 +144,7 @@ def free_slots(
     return slots
 
 
-def shortlist(slots: List[Slot], per_day: int = 3, max_total: int = 18) -> List[Slot]:
+def shortlist(slots: List[Slot], per_day: int = 2, max_total: int = 10) -> List[Slot]:
     """Down-sample free slots to a spread the model can rank fast.
 
     A 10-day window yields hundreds of half-hourly free slots; asking the model
@@ -179,14 +179,16 @@ def _api_key() -> Optional[str]:
 
 
 # API Gateway kills any request at 29s, so the whole model budget must fit well
-# under that. We give each model ONE tight attempt and let the model fallback
-# chain (flash-latest -> flash-lite -> deterministic) provide the resilience,
-# rather than slow same-model retries. A 503/429 returns fast, so falling
-# straight through to the next model is quicker than backing off in place.
-_CALL_TIMEOUT_S = int(os.environ.get("GEMINI_TIMEOUT_S", "12"))
+# under that. Measured free-tier latency (2026-07-31): flash-latest is steady at
+# ~5-6s, flash-lite swings 1.6-16.7s. So give the primary a generous 16s (absorbs
+# an occasional spike) and the fallback 10s — 26s worst case, under the cap — and
+# let the model chain (flash-latest -> flash-lite -> deterministic) be the
+# resilience rather than slow same-model retries.
+_PRIMARY_TIMEOUT_S = int(os.environ.get("GEMINI_TIMEOUT_S", "16"))
+_FALLBACK_TIMEOUT_S = int(os.environ.get("GEMINI_FALLBACK_TIMEOUT_S", "10"))
 
 
-def _call_gemini(prompt: str, key: str, model_id: str) -> dict:
+def _call_gemini(prompt: str, key: str, model_id: str, timeout: int) -> dict:
     url = f"{_API_BASE}/{model_id}:generateContent?key={key}"
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
@@ -198,7 +200,7 @@ def _call_gemini(prompt: str, key: str, model_id: str) -> dict:
     }).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, method="POST", headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=_CALL_TIMEOUT_S) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         payload = json.load(r)
     return json.loads(payload["candidates"][0]["content"]["parts"][0]["text"])
 
@@ -243,9 +245,10 @@ def recommend(title: str, duration_min: int, slots: List[Slot],
     # Try the sharp model first, then each fallback, before deterministic.
     valid = {s["start"] for s in slots}
     last_err = None
-    for model_id in [MODEL_ID, *MODEL_FALLBACKS]:
+    for idx, model_id in enumerate([MODEL_ID, *MODEL_FALLBACKS]):
+        timeout = _PRIMARY_TIMEOUT_S if idx == 0 else _FALLBACK_TIMEOUT_S
         try:
-            raw = _call_gemini(prompt, key, model_id)
+            raw = _call_gemini(prompt, key, model_id, timeout)
         except Exception as exc:  # noqa: BLE001 — try the next model, then fall back
             last_err = exc
             continue
